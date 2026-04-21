@@ -1,84 +1,99 @@
 import streamlit as st
 from groq import Groq
 
-# Cấu hình giao diện
-st.set_page_config(page_title="Doki Style Chat", page_icon="📱", layout="wide")
+# 1. Cấu hình & Giao diện
+st.set_page_config(page_title="Doki Premium Chat", page_icon="💖", layout="wide")
 
-# CSS làm đẹp giao diện (ĐÃ FIX LỖI Ở ĐÂY)
 st.markdown("""
     <style>
-    .stChatMessage { border-radius: 15px; margin-bottom: 10px; }
-    .stSidebar { background-color: #1e1e2e; }
+    .stApp { background: linear-gradient(135deg, #1e1e2e 0%, #11111b 100%); color: #cdd6f4; }
+    [data-testid="stSidebar"] { background-color: #181825 !important; }
+    [data-testid="stChatMessage"]:nth-child(even) { background-color: #313244 !important; border-radius: 20px 20px 5px 20px !important; }
+    [data-testid="stChatMessage"]:nth-child(odd) { background-color: #f5c2e7 !important; color: #11111b !important; border-radius: 20px 20px 20px 5px !important; }
+    [data-testid="stChatMessage"]:nth-child(odd) p { color: #11111b !important; }
+    .stButton>button { border-radius: 10px; background-color: #f5c2e7; color: #11111b; border: none; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# Khởi tạo dữ liệu
+# 2. Khởi tạo dữ liệu
 if "all_chars" not in st.session_state:
-    st.session_state.all_chars = {
-        "Bạch Thần": {"history": [], "bio": "Tiên nhân lạnh lùng, yêu thương chủ nhân.", "avatar": "🐉"},
-        "Em Gái Mưa": {"history": [], "bio": "Cô gái hàng xóm tinh nghịch, hay làm nũng.", "avatar": "🌸"}
-    }
+    st.session_state.all_chars = {"Bạch Thần": {"history": [], "bio": "Tiên nhân lạnh lùng, chiếm hữu.", "avatar": "🐉"}}
 if "active_char" not in st.session_state:
     st.session_state.active_char = "Bạch Thần"
 
+char_info = st.session_state.all_chars[st.session_state.active_char]
+
 # --- SIDEBAR ---
 with st.sidebar:
-    st.title("📱 Doki Chat")
-    api_key = st.text_input("🔑 Nhập GROQ Key:", type="password")
+    st.markdown("<h1 style='text-align: center; color: #f5c2e7;'>💖 Doki Chat</h1>", unsafe_allow_html=True)
+    api_key = st.text_input("🔑 GROQ KEY:", type="password")
     
+    st.divider()
+    st.subheader("🛠️ Chỉnh sửa khúc này")
+    
+    if len(char_info["history"]) >= 2:
+        if st.button("🔄 Thử lại câu này (Regen)", use_container_width=True):
+            # Xóa câu trả lời cuối của AI, giữ lại câu của User để nó tự chạy lại
+            char_info["history"].pop() 
+            st.session_state.retry_trigger = True
+            st.rerun()
+            
+        if st.button("❌ Xóa cặp cuối", use_container_width=True):
+            char_info["history"] = char_info["history"][:-2]
+            st.rerun()
+
+    if st.button("🧹 Reset toàn bộ", use_container_width=True):
+        char_info["history"] = []
+        st.rerun()
+
     st.divider()
     st.subheader("👥 Nhân vật")
     for name in st.session_state.all_chars.keys():
         if st.button(f"{st.session_state.all_chars[name]['avatar']} {name}", use_container_width=True):
             st.session_state.active_char = name
             st.rerun()
-            
-    st.divider()
-    st.subheader("➕ Tạo mới")
-    new_name = st.text_input("Tên:")
-    new_avatar = st.text_input("Emoji:", "👤")
-    new_bio = st.text_area("Cốt truyện:")
-    if st.button("Lưu nhân vật"):
-        if new_name:
-            st.session_state.all_chats = st.session_state.get("all_chats", {}) # Đảm bảo biến tồn tại
-            st.session_state.all_chars[new_name] = {"history": [], "bio": new_bio, "avatar": new_avatar}
-            st.session_state.active_char = new_name
-            st.rerun()
 
-# --- CHAT ---
-char_info = st.session_state.all_chars[st.session_state.active_char]
-st.title(f"{char_info['avatar']} {st.session_state.active_char}")
+# --- KHUNG CHAT ---
+st.markdown(f"<h2 style='color: #f5c2e7;'>{char_info['avatar']} {st.session_state.active_char}</h2>", unsafe_allow_html=True)
 
-if api_key:
+def call_ai(prompt_input, history):
     try:
         client = Groq(api_key=api_key)
-        for msg in char_info["history"]:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-
-        if prompt := st.chat_input(f"Nhắn với {st.session_state.active_char}..."):
-            st.chat_message("user").markdown(prompt)
-            
-            messages = [
-                {"role": "system", "content": f"Bạn là {st.session_state.active_char}. {char_info['bio']}. Nhập vai tự do 18+, chi tiết."}
-            ]
-            for h in char_info["history"]:
-                messages.append(h)
-            messages.append({"role": "user", "content": prompt})
-            
-            completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-            )
-            
-            ans = completion.choices[0].message.content
-            with st.chat_message("assistant"):
-                st.markdown(ans)
-            
-            char_info["history"].append({"role": "user", "content": prompt})
-            char_info["history"].append({"role": "assistant", "content": ans})
-            
+        messages = [{"role": "system", "content": f"Bạn là {st.session_state.active_char}. {char_info['bio']}. Nhập vai 18+, chi tiết."}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": prompt_input})
+        
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            temperature=0.9
+        )
+        return completion.choices[0].message.content
     except Exception as e:
-        st.error(f"Lỗi: {e}")
-else:
-    st.warning("Dán API Key Groq vào bên trái để bắt đầu!")
+        return f"Lỗi: {e}"
+
+# Hiển thị lịch sử
+for msg in char_info["history"]:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# Xử lý khi nhấn "Thử lại câu này"
+if st.session_state.get("retry_trigger") and len(char_info["history"]) > 0:
+    last_user_prompt = char_info["history"].pop()["content"] # Lấy câu user ra
+    st.session_state.retry_trigger = False
+    with st.chat_message("assistant"):
+        with st.spinner("Đang nghĩ câu khác..."):
+            new_ans = call_ai(last_user_prompt, char_info["history"])
+            st.markdown(new_ans)
+            char_info["history"].append({"role": "user", "content": last_user_prompt})
+            char_info["history"].append({"role": "assistant", "content": new_ans})
+            st.rerun()
+
+# Nhập tin nhắn mới
+if prompt := st.chat_input("Viết lời thoại..."):
+    st.chat_message("user").markdown(prompt)
+    with st.chat_message("assistant"):
+        ans = call_ai(prompt, char_info["history"])
+        st.markdown(ans)
+    char_info["history"].append({"role": "user", "content": prompt})
+    char_info["history"].append({"role": "assistant", "content": ans})
